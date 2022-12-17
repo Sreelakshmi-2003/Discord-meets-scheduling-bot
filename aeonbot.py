@@ -16,7 +16,7 @@ async def on_ready():
     
 @client.command()
 async def hello(ctx):
-    await ctx.send("HEllo i am a youtube bot")
+    await ctx.send("HEllo i am a bot")
     
     
 @client.event
