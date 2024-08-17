@@ -1,4 +1,4 @@
-import discord 
+import discord
 from discord.ext import commands
 from discord import DMChannel
 import os
@@ -6,47 +6,38 @@ import schedule
 import datetime
 import threading
 from dotenv import load_dotenv
-project_folder = os.path.expanduser("C:") # adjust as appropriate
+
+project_folder = os.path.expanduser("C:")  # adjust as appropriate
 load_dotenv(os.path.join(project_folder, 'distoken.env'))
 
 intents = discord.Intents.default()
 intents.members = True
+intents.message_content = True  # Added to handle message content in on_message
+client = commands.Bot(command_prefix='$', intents=intents)
 
-client = commands.Bot(command_prefix = '$' , intents = intents)
-
-client = discord.Client(command_prefix = '$' , intents=discord.Intents.default())
 meetings = []
 users = {}
-channel = client.get_channel(1045640085963546666)
 
-"""@client.event
+@client.event
 async def on_ready():
-    print("The bot is now ready to use!")
-    print("............................")
-
-@client.command()
-async def hello(ctx):
-    await ctx.send("HEllo i am a bot")
-
-@client.command()
-async def goodbye(ctx):
-    await ctx.send("hope you have a good day")
-"""
+    print(f'We have logged in as {client.user}')
+    if client.user.name != "aeon":
+        await client.user.edit(username="aeon")
+    with open('icon.png', 'rb') as image:
+        await client.user.edit(avatar=image.read())
+    # Start periodic check
+    threading.Thread(target=checkTime, daemon=True).start()
 
 @client.event
 async def on_member_join(member):
-    channel = client.get_channel(104564008596354666)
+    channel = client.get_channel(channel_id)
     await channel.send("Hello")
-
 
 @client.event
 async def on_member_remove(member):
-    channel = client.get_channel(104564008596354666)
+    channel = client.get_channel(channel_id)
     await channel.send("Goodbye")
 
-
-
-# unfinished
 def checkTime():
     # This function runs periodically every 60 seconds
     threading.Timer(60, checkTime).start()
@@ -54,36 +45,35 @@ def checkTime():
     time_now = datetime.datetime.now().strftime("%H:%M")
     date_now = datetime.datetime.today().strftime('%Y-%m-%d')
     now = date_now + " " + time_now
-   
-    for meeting in meetings:
-      meeting_time = meeting.getDateTime().strftime("%Y-%m-%d %H:%M")
 
-      if(str(meeting_time) == str(now)):
-        print("Should trigger dm_missing")
-        '''
-        process_command("missing")
-        channel.send("$dm_missing")
-        '''
+    for meeting in meetings:
+        meeting_time = meeting.getDateTime().strftime("%Y-%m-%d %H:%M")
+
+        if str(meeting_time) == str(now):
+            # Trigger dm_missing
+            # Process command `missing`
+            channel = client.get_channel(channel_id)  
+            if channel:
+                message = await channel.fetch_message(meeting.getMessageId())  # Fetch the message for the meeting
+                await dm_missing(message)
 
 def addUser(user):
-    if (user.id not in users.keys()):
+    if user.id not in users:
         users[user.id] = []
 
 def addUserMeeting(user, meeting):
     addUser(user)
-    if (meeting.getName() not in users[user.id]):
+    if meeting.getName() not in users[user.id]:
         users[user.id].append(meeting.getName())
 
 def removeUserMeeting(user, meeting):
-    if (meeting.getName() in users[user]):
-        users[user].remove(meeting.getName())
-    print(str(users))
+    if meeting.getName() in users.get(user.id, []):
+        users[user.id].remove(meeting.getName())
+    print(users)
 
 async def dm_missing(message):
-    author = message.author    
-    testing = client.users
-    
-    if (author.voice is None):
+    author = message.author
+    if author.voice is None:
         await message.channel.send('Sorry, you are not currently in a voice channel.')
     else:
         channel = author.voice.channel
@@ -91,26 +81,22 @@ async def dm_missing(message):
         current_time = now.strftime('%H:%M')
         current_date = now.strftime('%B %d, %Y')
 
-        # checking to see which meeting is happening now
         for meeting in meetings:
-            print (meeting.getDateTime())
-            print (datetime.datetime.now())
-            print (meeting.getEndDateTime())
-            if datetime.datetime.now() >= meeting.getDateTime() and datetime.datetime.now() <= meeting.getEndDateTime():
-                if not(admin_authentication(author, meeting)):
-                    await message.channel.send("{} could not ping everyone missing for the meeting {}".format(await client.guilds[0].fetch_member(author.id), meeting.getName()))
+            if meeting.getDateTime() <= now <= meeting.getEndDateTime():
+                if not admin_authentication(author, meeting):
+                    await message.channel.send(f"{author} could not ping everyone missing for the meeting {meeting.getName()}")
                     return
                 missing = meeting
-                await message.channel.send(meeting.getName() + ' is taking place right now')
+                await message.channel.send(f'{meeting.getName()} is taking place right now')
                 for person in missing.getParticipants():
                     if person.voice is None or person.voice.channel != channel:
-                        await person.send(meeting.getName() + ' is taking place right now! Come to ' + str(channel) + ' to join!')
-                await message.channel.send("{} pinged everyone missing for the meeting {}".format(await client.guilds[0].fetch_member(author.id), meeting.getName()))
+                        await person.send(f'{meeting.getName()} is taking place right now! Come to {channel} to join!')
+                await message.channel.send(f"{author} pinged everyone missing for the meeting {meeting.getName()}")
                 return
-        
-async def helpCommands (message):
-    embed_help = discord.Embed(title="Help Center:", color=0x685BC7) 
-    msg = """Welcome to the aeon bot! \nHere are some of the commands you can use: 
+
+async def helpCommands(message):
+    embed_help = discord.Embed(title="Help Center:", color=0x685BC7)
+    msg = """Welcome to the aeon bot! \nHere are some of the commands you can use:
     \n ```$meeting - allows you to schedule a new meeting 
     \n you can mix and match these parameters but make sure you have the title!
     \n parameters: 
@@ -130,10 +116,8 @@ async def helpCommands (message):
     ```$missing - checks the sender's voice channel to see if all meeting attendees are present and sends a direct message to those who are missing```
     """
     embed_help.description = msg
-    await message.channel.send (embed=embed_help)
+    await message.channel.send(embed=embed_help)
 
-
-    
 async def parse_meeting_info(parameters):
     meeting_time = None
     meeting_date = None
@@ -144,88 +128,77 @@ async def parse_meeting_info(parameters):
     auto_remind = None
     copy_desc = False
 
-    #Loop through the remaining parameters
     for param in parameters:
-
-        #Time parameter HH:MM (24HR)
-        if (len(param) >= 3 and param[2] == ':'):
-            #The first time found is assumed to be the start time
-            if (not(start_recorded)):
-                minutes = 0 #Default the minutes to 0 if not provided
+        # Time parameter HH:MM (24HR)
+        if ':' in param and len(param) >= 3:
+            if not start_recorded:
                 try:
                     minutes = int(param[3:])
-                except:
+                except ValueError:
                     minutes = 0
                 meeting_time = datetime.time(int(param[:2]), minutes)
                 start_recorded = True
-            #The second time found is assumed to be the duration
             else:
-                minutes = 0 #Default the minutes to 0 if not provided
                 try:
                     minutes = int(param[3:])
-                except:
+                except ValueError:
                     minutes = 0
                 meeting_duration = datetime.timedelta(hours=int(param[:2]), minutes=minutes)
 
-        #Time parameter alternate format H:MM (24HR)
-        if (len(param) >= 2 and param[1] == ':'):
-            #The first time found is assumed to be the start time
-            if (not(start_recorded)):
-                minutes = 0 #Default the minutes to 0 if not provided
+        # Time parameter alternate format H:MM (24HR)
+        elif ':' in param and len(param) >= 2:
+            if not start_recorded:
                 try:
                     minutes = int(param[2:])
-                except:
+                except ValueError:
                     minutes = 0
                 meeting_time = datetime.time(int(param[:1]), minutes)
                 start_recorded = True
-            #The second time found is assumed to be the duration
             else:
-                minutes = 0 #Default the minutes to 0 if not provided
                 try:
                     minutes = int(param[2:])
-                except:
+                except ValueError:
                     minutes = 0
                 meeting_duration = datetime.timedelta(hours=int(param[:1]), minutes=minutes)
 
-        #Date parameter DD/MM/YYYY (if year is omitted, assumed the current)
-        if (len(param) == 5 and param[2] == '/'):
+        # Date parameter DD/MM/YYYY
+        if len(param) == 5 and param[2] == '/':
             meeting_date = datetime.date(datetime.datetime.now().year, int(param[3:]), int(param[:2]))
-        elif (len(param) == 10 and param[2] == '/' and param[5] == '/'):
+        elif len(param) == 10 and param[2] == '/' and param[5] == '/':
             meeting_date = datetime.date(int(param[6:]), int(param[3:5]), int(param[:2]))
 
-        #Participants parameter - all the @ users
-        if (param[:3] == '<@!'):
-            participants.append(await client.guilds[0].fetch_member(int(param[3:-1]))) #Add the user as a 'member' object
+        # Participants parameter - all the @ users
+        if param.startswith('<@!'):
+            participants.append(await client.guilds[0].fetch_member(int(param[3:-1])))
 
-        #Desc parameter start - string (in quotes)
-        if (param.startswith("'")):
+        # Description parameter start - string (in quotes)
+        if param.startswith("'"):
             copy_desc = True
-            param = param[1:] #Remove the quotation
+            param = param[1:]
             desc = ""
-        
-        #End of desc
-        if (param[-1] == "'"):
-            copy_desc = False
-            desc += param[:-1] #Remove the quotation
 
-        #Add part of the desc
-        if (copy_desc):
+        # End of description
+        if param.endswith("'"):
+            copy_desc = False
+            desc += param[:-1]
+
+        # Add part of the description
+        if copy_desc:
             desc += param + ' '
 
-        #Autoremind parameter - TRUE or FALSE
-        if (param.lower() == "true"):
+        # Auto-remind parameter - TRUE or FALSE
+        if param.lower() == "true":
             auto_remind = True
-        elif (param.lower() == 'false'):
+        elif param.lower() == 'false':
             auto_remind = False
-    
+
     return meeting_time, meeting_duration, meeting_date, participants, desc, auto_remind
 
 async def make_meeting(parameters):
-    #Name parameter
     name = "Undefined"
-    if (len(parameters) >= 1):
+    if len(parameters) >= 1:
         for meet in meetings:
-            if (meet.getName() == parameters[0]):
+            if meet.getName() == parameters[0]:
                 return "A meeting already uses that name!"
         name = parameters[0]
     else:
@@ -233,209 +206,135 @@ async def make_meeting(parameters):
 
     meeting_time, meeting_duration, meeting_date, participants, desc, auto_remind = await parse_meeting_info(parameters[1:])
 
-    if (meeting_time == None):
-        meeting_time = datetime.datetime.now().time() #Default time is now
-    if (meeting_duration == None):
-        meeting_duration = datetime.timedelta(hours=1) #Default is one hour long
-    if (meeting_date == None):
-        meeting_date = datetime.date.today() #If the date is omitted, assume today
-    if (auto_remind == None):
-        auto_remind = False #Default is no auto_remind
+    if meeting_time is None:
+        meeting_time = datetime.datetime.now().time()
+    if meeting_duration is None:
+        meeting_duration = datetime.timedelta(hours=1)
+    if meeting_date is None:
+        meeting_date = datetime.date.today()
+    if auto_remind is None:
+        auto_remind = False
 
-    meetings.append(schedule.Meeting(name, meeting_time, meeting_duration, meeting_date, participants, desc, auto_remind))
-    
+    meeting = schedule.Meeting(name, meeting_time, meeting_duration, meeting_date, participants, desc, auto_remind)
+    meetings.append(meeting)
+
     for user in participants:
-        addUserMeeting(user, meetings[-1])
+        addUserMeeting(user, meeting)
 
     return None
 
-#Updates the parameters for the given meetings
 async def update_meeting(message, parameters):
+    meeting_name = parameters[0]
+    meeting = next((meet for meet in meetings if meet.getName() == meeting_name), None)
 
-    for meeting in meetings:
-        if (meeting.getName() == parameters[0]):
-            if not (admin_authentication(message.author, meeting)):
-                return False
+    if meeting is None:
+        return "Meeting not found!"
 
-    found = -1
-    for i in range(len(meetings)):
-        if (meetings[i].getName() == parameters[0]):
-            found = i
-    
-    if (found == -1):
-        await message.channel.send("No meeting of name '{}' found.".format(parameters[0]))
-        return False
+    if len(parameters) < 2:
+        return "No parameters given to update!"
 
-    meeting_time, meeting_duration, meeting_date, participants, desc, auto_remind = await parse_meeting_info(parameters[1:])
+    # Update meeting details
+    param_updates = parameters[1:]
+    meeting_time, meeting_duration, meeting_date, participants, desc, auto_remind = await parse_meeting_info(param_updates)
 
-    #Set any changed values
-    if (meeting_time != None):
-        meetings[found].setTime(meeting_time)
-    if (meeting_duration != None):
-        meetings[found].setDuration(meeting_duration)
-    if (meeting_date != None):
-        meetings[found].setDate(meeting_date)
-    if (participants != []): #Not NONE
-        for person in participants:
-            if (not(meetings[found].addParticipant(person))):
-                try:
-                    await message.channel.send("{} has already signed up for {}".format(person, meetings[found].getName()))
-                except:
-                    print("Error, likely no message given (meeting creation issue).")
-    if (desc != ''):
-        meetings[found].setDesc(desc)
-    if (auto_remind != None):
-        meetings[found].setAutoRemind(auto_remind)
+    if meeting_time:
+        meeting.setTime(meeting_time)
+    if meeting_duration:
+        meeting.setDuration(meeting_duration)
+    if meeting_date:
+        meeting.setDate(meeting_date)
+    if desc:
+        meeting.setDesc(desc)
+    if participants:
+        meeting.setParticipants(participants)
+    if auto_remind is not None:
+        meeting.setAutoRemind(auto_remind)
 
-    return True
+    return "Meeting updated!"
 
-async def show_meetings(message):
-    if (len(meetings) == 0):
-        await message.channel.send("No meetings scheduled")
-    for meeting in meetings:
-        await message.channel.send(embed=meeting.getEmbed())
-
-async def delete_meeting(message, author):
-    for meeting in meetings:
-      if (meeting.getName() == message):
-        if not (admin_authentication(author, meeting)):
-            return False
+async def delete_meeting(parameters):
+    if len(parameters) == 0:
+        return "No meeting name provided!"
+    meeting_name = parameters[0]
+    meeting = next((meet for meet in meetings if meet.getName() == meeting_name), None)
+    if meeting:
         meetings.remove(meeting)
-        for user in users.keys():
-            removeUserMeeting(user, meeting)
-        return True
-    return False
-
-async def my_meetings(message):
-    user_meetings = []
-    user = await client.fetch_user(message.author.id)
-
-    if (len(meetings) != 0):
-        for meeting in meetings:
-            participants = meeting.getParticipants()
-            if message.author in participants:
-                user_meetings.append(meeting)
-
-        await DMChannel.send(user, "Upcoming Meetings:")
-        for meeting in user_meetings:
-            await DMChannel.send(user, embed=meeting.getEmbed())
+        return "Meeting deleted!"
     else:
-        await DMChannel.send(user, "No upcoming meetings")
-        
-def admin_authentication(user, meeting):
-    flag = False
-    for admin in meeting.getAdmin():
-        if (user.id == admin.id):
-            flag = True
-    return flag
+        return "Meeting not found!"
 
-async def process_command(message):
-    parameters = message.content.split(' ')
+@client.command()
+async def meeting(ctx, *params):
+    result = await make_meeting(params)
+    if result:
+        await ctx.send(result)
+    else:
+        await ctx.send("Meeting created!")
 
-    if (len(parameters) > 0):
-        if (parameters[0] == 'hello'):
-            await message.channel.send("Hello!")
-        elif (parameters[0] == 'stop'):
-            await message.channel.send('Buy-bye!')
-            await client.logout()
-        elif (parameters[0] == 'meeting'):
-            error = await make_meeting(parameters[1:])
-            if (error != None):
-                await message.channel.send(error)
-            else:
-                meetings[-1].addAdmin(await client.guilds[0].fetch_member(message.author.id))
-                await message.channel.send(embed=meetings[-1].getEmbed())
-                message = await message.channel.send('React with \N{THUMBS UP SIGN} to enroll in the meeting {}'.format(parameters[1]))
-                await message.add_reaction('\N{THUMBS UP SIGN}')
-                meetings[-1].setMessage(message)
-        elif (parameters[0] == 'show_meetings'):
-            await show_meetings(message)
-        elif (parameters[0] == 'edit'):
-            flag = await update_meeting(message, parameters[1:])
-            if flag:
-                await message.channel.send('The meeting {} was successfully edited by {}'.format(parameters[1], await client.guilds[0].fetch_member(message.author.id)))
-            else:
-                await message.channel.send('The meeting {} could not be edited by {}'.format(parameters[1], await client.guilds[0].fetch_member(message.author.id)))
-        elif (parameters[0] == 'missing'):
-            await dm_missing(message)
-            # await message.channel.send(message.author)
-        elif (parameters[0] == 'delete_meeting'):
-            flag = await delete_meeting(parameters[1], message.author)
-            if flag:
-                await message.channel.send('The meeting "{}" has been successfully deleted by {}'.format(parameters[1], await client.guilds[0].fetch_member(message.author.id)))
-            else:
-                await message.channel.send('The meeting "{}" could not be deleted deleted by {}'.format(parameters[1], await client.guilds[0].fetch_member(message.author.id)))
-        elif (parameters[0] == 'my_meetings'):
-            await my_meetings(message)
-        elif (parameters[0] == 'help'):
-            await helpCommands(message)
-        elif (parameters[0] == 'add_admin'):
-            flag = False
-            for meeting in meetings:
-                if (meeting.getName() == parameters[1] and admin_authentication(message.author, meeting)):
-                    flag = meeting.addAdmin(await client.guilds[0].fetch_member(int(parameters[2][3:-1])))
-            if flag:
-                await message.channel.send('{} was successfully made an admin for the meeting {} by {}'.format(await client.guilds[0].fetch_member(int(parameters[2][3:-1])), parameters[1], await client.guilds[0].fetch_member(message.author.id)))
-            else:
-                await message.channel.send('{} could not be made an admin for the meeting {} by {}'.format(await client.guilds[0].fetch_member(int(parameters[2][3:-1])), parameters[1], await client.guilds[0].fetch_member(message.author.id)))
-        elif (parameters[0] == 'remove_admin'):
-            flag = False
-            for meeting in meetings:
-                if (meeting.getName() == parameters[1] and admin_authentication(message.author, meeting)):
-                    flag = meeting.removeAdmin(await client.guilds[0].fetch_member(int(parameters[2][3:-1])))
-            if flag:
-                await message.channel.send('{} was demoted from admin by {} for the meeting {}'.format(await client.guilds[0].fetch_member(int(parameters[2][3:-1])), await client.guilds[0].fetch_member(message.author.id), parameters[1]))
-            else:
-                await message.channel.send('{} could not be demoted from admin by {} for the meeting {}'.format(await client.guilds[0].fetch_member(int(parameters[2][3:-1])), await client.guilds[0].fetch_member(message.author.id), parameters[1]))
-        elif (parameters[0] == 'leave_meeting'):
-            flag = False
-            for meeting in meetings:
-                if (meeting.getName() == parameters[1]):
-                    flag = meeting.removeParticipant(await client.guilds[0].fetch_member(message.author.id))
-            if flag:
-                await message.channel.send('{} was successfully removed from the meeting {}'.format(await client.guilds[0].fetch_member(message.author.id), parameters[1]))
-            else:
-                await message.channel.send('{} could not be removed from the meeting {}'.format(await client.guilds[0].fetch_member(message.author.id), parameters[1]))
-
-@client.event
-async def on_reaction_add(reaction, user):
-    channel = reaction.message.channel
-    if(user != client.user and reaction.emoji == '\N{THUMBS UP SIGN}'):
-        for meeting in meetings:
-            if (reaction.message == meeting.getMessage()):
-                if (meeting.addParticipant(user)):
-                    addUserMeeting(user, meeting)
-                    await channel.send("{} has successfully signed up for {}".format(user.name, meeting.name))
-                else:
-                    await channel.send("{} has already signed up for {}".format(user.name, meeting.name))
-
-@client.event 
-async def on_guild_join (guild):
-    embed_greeting = discord.Embed(title="Hello!", color=0x685BC7) 
-    msg = "Hi, thanks for inviting me! \n- my prefix is `$` \n- you can see a list of commands by typing `$help`"
-    embed_greeting.description = msg
-    
-    for channel in guild.text_channels:
-        if channel.permissions_for(guild.me).send_messages:
-            await channel.send (embed=embed_greeting)
-        break
-
-@client.event
-async def on_ready():
-    print('We have logged in as {0.user}'.format(client))
-    if client.user.name != "aeon":
-        await client.user.edit(username="aeon")
-    with open('icon.png', 'rb') as image:
-        await client.user.edit(avatar=image.read())
-
-@client.event
-async def on_message(message):
-    if message.author == client.user:
+@client.command()
+async def show_meetings(ctx):
+    if not meetings:
+        await ctx.send("No meetings scheduled.")
         return
-    
-    if message.content.startswith('$'):
-        message.content = message.content[1:]
-        await process_command(message)
+    embed = discord.Embed(title="Scheduled Meetings", color=0x685BC7)
+    for meeting in meetings:
+        embed.add_field(name=meeting.getName(), value=f"Date: {meeting.getDateTime().strftime('%Y-%m-%d')}\nTime: {meeting.getDateTime().strftime('%H:%M')}\nDescription: {meeting.getDesc()}", inline=False)
+    await ctx.send(embed=embed)
 
-#checkTime()   # unfinished  
-client.run(os.getenv('TOKEN'))
+@client.command()
+async def my_meetings(ctx):
+    user = ctx.author
+    if user.id not in users or not users[user.id]:
+        await ctx.send("You have no meetings scheduled.")
+        return
+    embed = discord.Embed(title="Your Scheduled Meetings", color=0x685BC7)
+    for meeting_name in users[user.id]:
+        meeting = next((meet for meet in meetings if meet.getName() == meeting_name), None)
+        if meeting:
+            embed.add_field(name=meeting.getName(), value=f"Date: {meeting.getDateTime().strftime('%Y-%m-%d')}\nTime: {meeting.getDateTime().strftime('%H:%M')}\nDescription: {meeting.getDesc()}", inline=False)
+    await ctx.send(embed=embed)
+
+@client.command()
+async def edit(ctx, *params):
+    result = await update_meeting(ctx.message, params)
+    if result:
+        await ctx.send(result)
+    else:
+        await ctx.send("Meeting updated!")
+
+@client.command()
+async def delete_meeting(ctx, *params):
+    result = await delete_meeting(params)
+    if result:
+        await ctx.send(result)
+    else:
+        await ctx.send("Meeting deletion failed!")
+
+@client.command()
+async def add_admin(ctx, meeting_name, user: discord.User):
+    meeting = next((meet for meet in meetings if meet.getName() == meeting_name), None)
+    if meeting:
+        meeting.addAdmin(user)
+        await ctx.send(f"Added {user} as an admin to the meeting {meeting_name}")
+    else:
+        await ctx.send("Meeting not found!")
+
+@client.command()
+async def remove_admin(ctx, meeting_name, user: discord.User):
+    meeting = next((meet for meet in meetings if meet.getName() == meeting_name), None)
+    if meeting:
+        meeting.removeAdmin(user)
+        await ctx.send(f"Removed {user} as an admin from the meeting {meeting_name}")
+    else:
+        await ctx.send("Meeting not found!")
+
+@client.command()
+async def missing(ctx):
+    message = await ctx.send("Checking for missing participants...")
+    await dm_missing(message)
+
+@client.command()
+async def help(ctx):
+    await helpCommands(ctx.message)
+
+client.run(os.getenv('DISCORD_TOKEN'))
