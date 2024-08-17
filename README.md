@@ -30,25 +30,26 @@ This Discord bot manages meetings on your server. It allows users to schedule me
    
 
 2. *Install the required libraries:*
-
+```
    bash
    pip install -r requirements.txt
+```
    
 
 3. **Create a .env file in the root directory and add your Discord bot token:**
-
+```
    dotenv
    DISCORD_TOKEN=<your-discord-bot-token>
-   
+   ```
 
 
 ## Usage
 
 1. *Run the bot:*
-
+```
    bash
    python bot.py
-   
+   ```
 
 2. *Commands:*
 
